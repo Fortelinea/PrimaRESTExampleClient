@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.28803.202
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PrimaRESTExampleClient", "PrimaRESTExampleClient\PrimaRESTExampleClient.csproj", "{A3C5B8A1-7034-4988-801C-B7423654DBE0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A3C5B8A1-7034-4988-801C-B7423654DBE0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A3C5B8A1-7034-4988-801C-B7423654DBE0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A3C5B8A1-7034-4988-801C-B7423654DBE0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A3C5B8A1-7034-4988-801C-B7423654DBE0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F154FC7A-024F-499F-81D6-58E0A8760C9C}
+	EndGlobalSection
+EndGlobal
