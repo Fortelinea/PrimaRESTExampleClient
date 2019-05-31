@@ -105,31 +105,36 @@ namespace PrimaRESTExampleClient
                 Console.WriteLine();
 
                 //get first slide from the collection
-                var slides = (JArray)JObject.Parse(getSlidesByBarcodeResponse)["value"];
-                var slide = slides[0];
+                //var slides = (JArray)JObject.Parse(getSlidesByBarcodeResponse)["value"];
+                //var slide = slides[0];
 
-                //get slide's case id
-                var caseId = slide["caseBaseId"]
-                    .Value<int>();
+                ////get slide's case id
+                //var caseId = slide["caseBaseId"]
+                //    .Value<int>();
 
-                //look up case info using slide's case id
-                var getCaseByIdResponse = await GetCaseByIdAsync(serverBaseUri, caseId, tokenType, accessToken);
-                Console.WriteLine($"Response:{Environment.NewLine}{getCaseByIdResponse.ToPrettyString()}");
+                ////look up case info using slide's case id
+                //var getCaseByIdResponse = await GetCaseByIdAsync(serverBaseUri, caseId, tokenType, accessToken);
+                //Console.WriteLine($"Response:{Environment.NewLine}{getCaseByIdResponse.ToPrettyString()}");
+                //Console.WriteLine();
+
+                ////check case for study id, may not be present depending on case type
+                //var slideCase = JObject.Parse(getCaseByIdResponse);
+
+                //if (slideCase.TryGetValue("studyId", out var studyId))
+                //{
+                //    var intStudyId = studyId.Value<int?>();
+                //    if (intStudyId != null)
+                //    {
+                //        var studyByIdResponse = await GetStudyByIdAsync(serverBaseUri, intStudyId.Value, tokenType, accessToken);
+                //        Console.WriteLine($"Response:{Environment.NewLine}{studyByIdResponse.ToPrettyString()}");
+                //        Console.WriteLine();
+                //    }
+                //}
+
+                //get a page of the stain tests collection, skipping the first 100 items
+                var stainsResponse = await GetPagedStainTestsAsync(serverBaseUri, 100, tokenType, accessToken);
+                Console.WriteLine($"Response:{Environment.NewLine}{stainsResponse.ToPrettyString()}");
                 Console.WriteLine();
-
-                //check case for study id, may not be present depending on case type
-                var slideCase = JObject.Parse(getCaseByIdResponse);
-
-                if (slideCase.TryGetValue("studyId", out var studyId))
-                {
-                    var intStudyId = studyId.Value<int?>();
-                    if (intStudyId != null)
-                    {
-                        var studyByIdResponse = await GetStudyByIdAsync(serverBaseUri, intStudyId.Value, tokenType, accessToken);
-                        Console.WriteLine($"Response:{Environment.NewLine}{studyByIdResponse.ToPrettyString()}");
-                        Console.WriteLine();
-                    }
-                }
             }
         }
 
@@ -153,6 +158,18 @@ namespace PrimaRESTExampleClient
             Console.WriteLine($"Making a GET request for study information for a study with id {id} (Request URL: {getStudyByIdUri})...");
 
             return MakeAuthenticatedGetRequest(getStudyByIdUri, tokenType, accessToken);
+        }
+
+
+        private static Task<string> GetPagedStainTestsAsync(Uri serverBaseUri, int skip, string tokenType, string accessToken)
+        {
+            var apiUri = new Uri(serverBaseUri, "api/v1/");
+
+            var getPagedStainTestsUri = new Uri(apiUri, $"StainTest?$skip={skip}");
+
+            Console.WriteLine($"Making a GET request for page stain tests skipping the first {skip} items (Request URL: {getPagedStainTestsUri})...");
+
+            return MakeAuthenticatedGetRequest(getPagedStainTestsUri, tokenType, accessToken);
         }
 
         private static Task<string> GetSlidesByBarcodeContentAsync(Uri serverBaseUri, string barcodeContent, string tokenType, string accessToken)

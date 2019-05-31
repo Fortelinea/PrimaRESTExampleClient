@@ -109,9 +109,48 @@ The slide response should look like:
 	}]
 }
 ```
-
 We can see plenty of data about this slide - for example, it has surgical number ```"savedIdentifier": "S19-1256:D-C10",```. We can also see some foreign key relationships, like ```"stainTestId": 474```. We could look up the title for this stain by hitting the StainTests endpoint. A list of all of the endpoints is available on the Swagger UI page (or Swagger Json document) which can be found at ```https://<your-prima-rest-service-hostname-here>/swagger/index.html```.
 
 We can also see from the field ```"@odata.type": "#Fortelinea.Prima.Services.REST.V1.Models.CytoSlide"``` that this slide is a CytoSlide (a slide from a cytology/fluid specimen.) If we want to specifically query CytoSlides or another specific slide type (and properly search/filter using type-specific properties) we can use the specific CytoSlides REST endpoint. 
 
 Examples can be found in the source code for grabbing case and study data from a slide. Similar steps can be taken for other barcoded items like cassettes/blocks and specimens. For more information about different types of barcoded items tracked by Prima, visit the installed client's Prima web site.
+
+## Paging
+In order to prevent large database reads, collections from the Prima REST Service are returned in pages with a maximum size of 100 items. OData ```top``` and ```skip``` can be used in queries to control paging.
+
+### Example paging
+A GET Request made to ```https://<your-prima-rest-service-hostname-here>/api/v1/StainTest``` will return a collection of 100 or fewer Stain Tests like below:
+
+```json
+{
+  "@odata.context": "https://localhost:5001/api/v1/$metadata#StainTest",
+  "value": [
+    {
+      "abbreviation": "Unstained",
+      "cptCode": "10010",
+      "description": "Unstained/No Bake",
+      "stainTestCategoryId": 1,
+      "timeLength": 0,
+      "title": "Unstained",
+      "createdByUserId": 1,
+      "id": 1
+    },
+    ...
+    {
+      "abbreviation": "CD3 Dako",
+      "cptCode": "10005",
+      "description": "F7.2.38",
+      "stainTestCategoryId": 4,
+      "timeLength": 10800,
+      "title": "CD3 Dako",
+      "createdByUserId": 1,
+      "id": 100
+    }
+  ],
+  "@odata.nextLink": "https://localhost:5001/api/v1/StainTest?$count=false&$skip=100"
+}
+```
+
+We can see that the ```nextLink``` is automatically included in this response.```"@odata.nextLink": "https://localhost:5001/api/v1/StainTest?$count=false&$skip=100"``` The next page after that would be accessed using query parameter ```skip=200``` and so on. 
+
+If fewer than 100 results at a time are desired, the ```top``` parameter can be specified to indicate the number of items to return.
