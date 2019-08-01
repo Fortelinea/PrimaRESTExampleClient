@@ -5,18 +5,17 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace PrimaRESTExampleClient
 {
     public class ApiConfig
     {
-        public string ServerUrl { get; set; }
-
         public string AuthenticationUrl { get; set; }
 
         public CredentialsConfig Credentials { get; set; }
+
+        public string ServerUrl { get; set; }
     }
 
     public class CredentialsConfig
@@ -25,23 +24,153 @@ namespace PrimaRESTExampleClient
 
         public string ClientSecret { get; set; }
 
-        public string Username { get; set; }
-
         public string Password { get; set; }
+
+        public string Username { get; set; }
     }
 
-    public static class JsonExtensions
+    internal class Program
     {
-        public static string ToPrettyString(this string s)
+        private static (string, string) GetAccessTokenAndTypeFromTokenResponse(string tokenResponse)
         {
-            return JToken.Parse(s)
-                         .ToString(Formatting.Indented);
-        }
-    }
+            string tokenType = null;
+            string accessToken = null;
+            if (string.IsNullOrEmpty(tokenResponse)) return (null, null);
 
-    class Program
-    {
-        static async Task Main(string[] args)
+            try
+            {
+                var jsonObject = JObject.Parse(tokenResponse);
+                tokenType = jsonObject["token_type"]
+                    .Value<string>();
+                accessToken = jsonObject["access_token"]
+                    .Value<string>();
+            }
+            catch
+            {
+                Console.WriteLine("Failed to parse token response to retrieve access token.");
+            }
+
+            return (accessToken, tokenType);
+        }
+
+        private static Task<string> GetCaseByIdAsync(Uri serverBaseUri, int id, string tokenType, string accessToken)
+        {
+            var apiUri = new Uri(serverBaseUri, "api/v1/");
+
+            var getCaseByIdUri = new Uri(apiUri, $"Case({id})");
+
+            Console.WriteLine($"Making a GET request for case information for a case with id {id} (Request URL: {getCaseByIdUri})...");
+
+            return MakeAuthenticatedGetRequest(getCaseByIdUri, tokenType, accessToken);
+        }
+
+        private static Task<string> GetPagedStainTestsAsync(Uri serverBaseUri, int skip, string tokenType, string accessToken)
+        {
+            var apiUri = new Uri(serverBaseUri, "api/v1/");
+
+            var getPagedStainTestsUri = new Uri(apiUri, $"StainTest?$skip={skip}");
+
+            Console.WriteLine($"Making a GET request for page stain tests skipping the first {skip} items (Request URL: {getPagedStainTestsUri})...");
+
+            return MakeAuthenticatedGetRequest(getPagedStainTestsUri, tokenType, accessToken);
+        }
+
+        private static string GetRefreshTokenFromRefreshTokenResponse(string getRefreshTokenResponse)
+        {
+            try
+            {
+                var jsonObject = JObject.Parse(getRefreshTokenResponse);
+                return jsonObject["refresh_token"]
+                    .Value<string>();
+            }
+            catch
+            {
+                Console.WriteLine("Failed to parse token response to retrieve refresh token.");
+            }
+
+            return null;
+        }
+
+        private static Task<string> GetStudyByIdAsync(Uri serverBaseUri, int id, string tokenType, string accessToken)
+        {
+            var apiUri = new Uri(serverBaseUri, "api/v1/");
+
+            var getStudyByIdUri = new Uri(apiUri, $"Study({id})");
+
+            Console.WriteLine($"Making a GET request for study information for a study with id {id} (Request URL: {getStudyByIdUri})...");
+
+            return MakeAuthenticatedGetRequest(getStudyByIdUri, tokenType, accessToken);
+        }
+
+        private static async Task<string> GetTokenResponseAsync(Uri authenticationUrl, Dictionary<string, string> authenticationCredentials)
+        {
+            try
+            {
+                var client = new HttpClient();
+
+                var content = new FormUrlEncodedContent(authenticationCredentials);
+
+                var response = await client.PostAsync(authenticationUrl, content);
+
+                if (response.StatusCode != HttpStatusCode.OK)
+                {
+                    var message = $"POST failed. Received HTTP {response.StatusCode}";
+                    throw new ApplicationException(message);
+                }
+
+                var responseString = await response.Content.ReadAsStringAsync();
+
+                return responseString;
+            }
+            catch (Exception ex)
+            {
+                return $"Error sending token request: {ex.Message}";
+            }
+        }
+
+        private static Task<string> GetTokenResponseAsync_ClientCredentialFlow(Uri authenticationUri, string clientId, string clientSecret)
+        {
+            return GetTokenResponseAsync(authenticationUri,
+                                         new Dictionary<string, string>
+                                         {
+                                             {"grant_type", "client_credentials"},
+                                             {"scope", "api_read_all"},
+                                             {"client_id", clientId},
+                                             {"client_secret", clientSecret}
+                                         });
+        }
+
+        private static Task<string> GetTokenResponseAsync_RefreshTokenFlow(Uri authenticationUri, string clientId, string clientSecret, string refreshToken)
+        {
+            var tokenRequestParameters = new Dictionary<string, string>
+                                         {
+                                             {"grant_type", "refresh_token"},
+                                             {"client_id", clientId},
+                                             {"client_secret", clientSecret},
+                                             {"refresh_token", refreshToken}
+                                         };
+
+            return GetTokenResponseAsync(authenticationUri, tokenRequestParameters);
+        }
+
+        private static Task<string> GetTokenResponseAsync_ResourceOwnerPasswordFlow(Uri authenticationUri, string clientId, string clientSecret, string username, string password, bool requestRefreshToken = false)
+        {
+            var tokenRequestParameters = new Dictionary<string, string>
+                                         {
+                                             {"grant_type", "password"},
+                                             {"scope", "api_read_all"},
+                                             {"client_id", clientId},
+                                             {"client_secret", clientSecret},
+                                             {"username", username},
+                                             {"password", password}
+                                         };
+
+            if (requestRefreshToken) tokenRequestParameters["scope"] = "api_read_all offline_access";
+
+            return GetTokenResponseAsync(authenticationUri, tokenRequestParameters);
+        }
+
+        private static async Task Main(string[] args)
         {
             //read configuration strings from appsettings.json file
             var config = new ConfigurationBuilder().AddJsonFile("appsettings.json", true, true)
@@ -99,9 +228,11 @@ namespace PrimaRESTExampleClient
                 //use acquired access token to query for some data about slides
 
                 //find slides by barcode content
-                var barcodeContent = "5*2U*UM9*1";
-                var getSlidesByBarcodeResponse = await GetSlidesByBarcodeContentAsync(serverBaseUri, barcodeContent, tokenType, accessToken);
-                Console.WriteLine($"Response:{Environment.NewLine}{getSlidesByBarcodeResponse.ToPrettyString()}");
+                //var barcodeContent = "5*2U*UM9*1";
+                var barcodeContent = "1>2U>3";
+                var client = new PrimaRestODataClient(serverBaseUri, accessToken);
+                var slide = await client.FindSlideByBarcodeContentAsync(barcodeContent);
+                Console.WriteLine($"Response:{Environment.NewLine}{slide.PrimaryIdentifier}");
                 Console.WriteLine();
 
                 //get first slide from the collection
@@ -135,135 +266,9 @@ namespace PrimaRESTExampleClient
                 var stainsResponse = await GetPagedStainTestsAsync(serverBaseUri, 100, tokenType, accessToken);
                 Console.WriteLine($"Response:{Environment.NewLine}{stainsResponse.ToPrettyString()}");
                 Console.WriteLine();
+
+                await TestGettingSlidesByListOfBarcodesAsync(serverBaseUri, tokenType, accessToken);
             }
-        }
-
-        private static Task<string> GetCaseByIdAsync(Uri serverBaseUri, int id, string tokenType, string accessToken)
-        {
-            var apiUri = new Uri(serverBaseUri, "api/v1/");
-
-            var getCaseByIdUri = new Uri(apiUri, $"Case({id})");
-
-            Console.WriteLine($"Making a GET request for case information for a case with id {id} (Request URL: {getCaseByIdUri})...");
-
-            return MakeAuthenticatedGetRequest(getCaseByIdUri, tokenType, accessToken);
-        }
-
-        private static Task<string> GetStudyByIdAsync(Uri serverBaseUri, int id, string tokenType, string accessToken)
-        {
-            var apiUri = new Uri(serverBaseUri, "api/v1/");
-
-            var getStudyByIdUri = new Uri(apiUri, $"Study({id})");
-
-            Console.WriteLine($"Making a GET request for study information for a study with id {id} (Request URL: {getStudyByIdUri})...");
-
-            return MakeAuthenticatedGetRequest(getStudyByIdUri, tokenType, accessToken);
-        }
-
-
-        private static Task<string> GetPagedStainTestsAsync(Uri serverBaseUri, int skip, string tokenType, string accessToken)
-        {
-            var apiUri = new Uri(serverBaseUri, "api/v1/");
-
-            var getPagedStainTestsUri = new Uri(apiUri, $"StainTest?$skip={skip}");
-
-            Console.WriteLine($"Making a GET request for page stain tests skipping the first {skip} items (Request URL: {getPagedStainTestsUri})...");
-
-            return MakeAuthenticatedGetRequest(getPagedStainTestsUri, tokenType, accessToken);
-        }
-
-        private static Task<string> GetSlidesByBarcodeContentAsync(Uri serverBaseUri, string barcodeContent, string tokenType, string accessToken)
-        {
-            var apiUri = new Uri(serverBaseUri, "api/v1/");
-
-            var getSlideByBarcodeUri = new Uri(apiUri, $"Slide?$filter=barcodeContent eq '{barcodeContent}'");
-
-            Console.WriteLine($"Making a GET request for slide information for slides with barcode content {barcodeContent} (Request URL: {getSlideByBarcodeUri})...");
-
-            return MakeAuthenticatedGetRequest(getSlideByBarcodeUri, tokenType, accessToken);
-        }
-
-        private static (string, string) GetAccessTokenAndTypeFromTokenResponse(string tokenResponse)
-        {
-            string tokenType = null;
-            string accessToken = null;
-            if (string.IsNullOrEmpty(tokenResponse)) return (null, null);
-
-            try
-            {
-                var jsonObject = JObject.Parse(tokenResponse);
-                tokenType = jsonObject["token_type"]
-                    .Value<string>();
-                accessToken = jsonObject["access_token"]
-                    .Value<string>();
-            }
-            catch
-            {
-                Console.WriteLine("Failed to parse token response to retrieve access token.");
-            }
-
-            return (accessToken, tokenType);
-        }
-
-        private static string GetRefreshTokenFromRefreshTokenResponse(string getRefreshTokenResponse)
-        {
-            try
-            {
-                var jsonObject = JObject.Parse(getRefreshTokenResponse);
-                return jsonObject["refresh_token"]
-                    .Value<string>();
-            }
-            catch
-            {
-                Console.WriteLine("Failed to parse token response to retrieve refresh token.");
-            }
-
-            return null;
-        }
-
-        private static Task<string> GetTokenResponseAsync_RefreshTokenFlow(Uri authenticationUri, string clientId, string clientSecret, string refreshToken)
-        {
-            var tokenRequestParameters = new Dictionary<string, string>
-                                         {
-                                             {"grant_type", "refresh_token"},
-                                             {"client_id", clientId},
-                                             {"client_secret", clientSecret},
-                                             {"refresh_token", refreshToken}
-                                         };
-
-            return GetTokenResponseAsync(authenticationUri, tokenRequestParameters);
-        }
-
-        private static Task<string> GetTokenResponseAsync_ResourceOwnerPasswordFlow(Uri authenticationUri, string clientId, string clientSecret, string username, string password, bool requestRefreshToken = false)
-        {
-            var tokenRequestParameters = new Dictionary<string, string>
-                                         {
-                                             {"grant_type", "password"},
-                                             {"scope", "api_read_all"},
-                                             {"client_id", clientId},
-                                             {"client_secret", clientSecret},
-                                             {"username", username},
-                                             {"password", password}
-                                         };
-
-            if (requestRefreshToken)
-            {
-                tokenRequestParameters["scope"] = "api_read_all offline_access";
-            }
-
-            return GetTokenResponseAsync(authenticationUri, tokenRequestParameters);
-        }
-
-        private static Task<string> GetTokenResponseAsync_ClientCredentialFlow(Uri authenticationUri, string clientId, string clientSecret)
-        {
-            return GetTokenResponseAsync(authenticationUri,
-                                         new Dictionary<string, string>
-                                         {
-                                             {"grant_type", "client_credentials"},
-                                             {"scope", "api_read_all"},
-                                             {"client_id", clientId},
-                                             {"client_secret", clientSecret}
-                                         });
         }
 
         private static async Task<string> MakeAuthenticatedGetRequest(Uri uri, string tokenType, string accessToken)
@@ -292,29 +297,29 @@ namespace PrimaRESTExampleClient
             }
         }
 
-        private static async Task<string> GetTokenResponseAsync(Uri authenticationUrl, Dictionary<string, string> authenticationCredentials)
+        private static async Task TestGettingSlidesByListOfBarcodesAsync(Uri serverBaseUri, string tokenType, string accessToken)
         {
             try
             {
-                var client = new HttpClient();
+                var slideBarcodes = new[]
+                                    {
+                                        "2*2U*1*1",
+                                        "2*2U*2*1",
+                                        "2*2U*1Y*1",
+                                        "1>2U>1",
+                                        "1>2U>2",
+                                        "1>2U>3"
+                                    };
 
-                var content = new FormUrlEncodedContent(authenticationCredentials);
-
-                var response = await client.PostAsync(authenticationUrl, content);
-
-                if (response.StatusCode != HttpStatusCode.OK)
-                {
-                    var message = $"POST failed. Received HTTP {response.StatusCode}";
-                    throw new ApplicationException(message);
-                }
-
-                var responseString = await response.Content.ReadAsStringAsync();
-
-                return responseString;
+                var client = new PrimaRestODataClient(serverBaseUri, accessToken);
+                var slides = await client.TranslateBarcodesToIdentifiersAsync(slideBarcodes);
+                Console.WriteLine("");
+                foreach (var slide in slides) Console.WriteLine($"Found Slide: {slide.PrimaryIdentifier} ({slide.AlternateIdentifier}) with barcode '{slide.BarcodeContent}'");
             }
             catch (Exception ex)
             {
-                return $"Error sending token request: {ex.Message}";
+                Console.WriteLine("There was a problem with TranslateBarcodesToIdentifiersAsync");
+                Console.WriteLine(ex);
             }
         }
     }
