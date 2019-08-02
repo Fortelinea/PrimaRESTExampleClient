@@ -232,7 +232,7 @@ namespace PrimaRESTExampleClient
                 var barcodeContent = "1>2U>3";
                 var client = new PrimaRestODataClient(serverBaseUri, accessToken);
                 var slide = await client.FindSlideByBarcodeContentAsync(barcodeContent);
-                Console.WriteLine($"Response:{Environment.NewLine}{slide.PrimaryIdentifier}");
+                Console.WriteLine(slide != null ? $"Response:{Environment.NewLine}{slide.PrimaryIdentifier}" : $"Response: Not Found");
                 Console.WriteLine();
 
                 //get first slide from the collection
@@ -314,7 +314,10 @@ namespace PrimaRESTExampleClient
                 var client = new PrimaRestODataClient(serverBaseUri, accessToken);
                 var slides = await client.TranslateBarcodesToIdentifiersAsync(slideBarcodes);
                 Console.WriteLine("");
-                foreach (var slide in slides) Console.WriteLine($"Found Slide: {slide.PrimaryIdentifier} ({slide.AlternateIdentifier}) with barcode '{slide.BarcodeContent}'");
+                foreach (var slide in slides)
+                {
+                    Console.WriteLine($"Found Slide: {slide.PrimaryIdentifier + (!string.IsNullOrWhiteSpace(slide.AlternateIdentifier) ? $" ({slide.AlternateIdentifier})" : "")} with barcode '{slide.BarcodeContent}'");
+                }
             }
             catch (Exception ex)
             {
